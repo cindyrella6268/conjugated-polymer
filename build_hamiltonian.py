@@ -201,7 +201,5 @@ if __name__ == "__main__":
         print("Unique off-diagonal nonzero entries after w_nm:", unique_offdiag_after)
         print("New entries added (upper triangle):", unique_offdiag_after - unique_offdiag)
 
-    # 5) Save H to disk (optional)
-    #np.save("H_200x200_with_w.npy", H)
+    # 5) Save H
     np.savetxt("H_onsite_backbone.txt", H, fmt="%.12f")
-    #print("Saved H_200x200_with_w.npy and .txt")
