@@ -28,11 +28,19 @@ def apply_minimum_image_A(vec, box_lengths_A):
     return vec - box_lengths_A * np.round(vec / box_lengths_A)
 
 # input files
-def load_inputs(H_file="H_onsite_w_sidechain.txt", coords_file="coords_wrapped.txt", p0_file="P0.txt"):
+def load_inputs(H_file="H_onsite_11252025.txt", coords_file="coords.txt", p0_file="P0.txt"):
     H = np.loadtxt(H_file)
     coords = np.loadtxt(coords_file)
     P0 = np.loadtxt(p0_file) if os.path.exists(p0_file) else None
     return H, coords, P0
+
+# get MO center
+def get_MO_center_MIC(c2_a, coords, box_lengths):
+    i_ref = np.argmax(c2_a) #reference center
+    r_shift = coords - coords[i_ref] #reference monomer is at center
+    R_rel = np.sum(c2_a[:, None] * r_shift, axis=0)
+    R_abs = R_rel + coords[i_ref]
+    return R_abs
 
 # kij
 def build_kij_from_H(H, coords, F_vec):
@@ -40,10 +48,9 @@ def build_kij_from_H(H, coords, F_vec):
     eigvals, eigvecs = np.linalg.eigh(H)
 
     c2 = np.abs(eigvecs)**2
-    #R_mo = compute_R_mo_with_MIC(c2, coords, box_lengths)
-    R_mo = np.einsum("na,nk->ak", c2, coords)
-    #if use_min_image:
-        #R_mo = apply_minimum_image_A(R_mo, box_lengths)
+    R_mo = np.zeros((N, 3))
+    for a in range(N):
+        R_mo[a] = get_MO_center_MIC(c2[a], coords, box_lengths)
     c4 = np.abs(eigvecs)**4
     sum_c4 = np.sum(c4, axis=0)
 
@@ -133,24 +140,31 @@ def solve_hole_populations(kij, P0=None, Ndop=None, tol=1e-8, max_iter=100000, d
 
 # mobility
 def compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop, network_ID=None):
-    R_mo_m = R_mo * angstrom_to_m
-    box_lengths_m = box_lengths * angstrom_to_m
+    box_lengths_A = box_lengths #kepp box length in A
 
     J_vec = np.zeros(3, dtype=float)
     N = len(P)
+
     for i in range(N):
         for j in range(N):
             if i == j:
                 continue
+
             #skip hopping across networks
             if network_ID is not None and network_ID[i] != network_ID[j]:
                 continue
+
             k_ij = kij[i, j]
             if k_ij <= 0.0:
                 continue
-            rij_m = R_mo_m[j] - R_mo_m[i]
-            #if use_min_image: 
-                #rij_m = apply_minimum_image_A(rij_m, box_lengths)
+
+            #compute rij in angstrom
+            rij = R_mo[j] - R_mo[i]   # A
+            if use_min_image:
+                rij = apply_minimum_image_A(rij, box_lengths_A)
+
+            rij_m = rij * angstrom_to_m
+
             J_vec += k_ij * P[i] * (1.0 - P[j]) * rij_m
 
     mu_along_field = np.dot(F_hat, J_vec) / (F_mag * Ndop)
@@ -207,3 +221,4 @@ def main(verbose=False, F_mag=20000.0, Ndop=10):
 
 if __name__ == "__main__":
     main()
+
