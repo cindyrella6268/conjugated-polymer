@@ -3,7 +3,7 @@ from math import exp
 import os
 
 tphi_path = "tphi_values.txt"    # thru-bond coupling
-coords_path = "coords_wrapped.txt"       # x y z
+coords_path = "coords.txt"       # x y z
 normals_path = "normals.txt"     # nx ny nz
 
 n_chains = 20
