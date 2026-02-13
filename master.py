@@ -4,6 +4,26 @@ import numpy as np
 import csv
 from typing import List, Tuple
 
+n_chains = 20
+n_monomers_per_chain = 10
+
+epsilon_default = 0.0
+
+J_inter_eV = 0.1
+sigma = 5.0
+r0 = 0.75 * sigma
+alpha = 1.0 / sigma
+through_space_cutoff = 15.0
+
+kB = 8.617333262145e-5    # eV / K
+hbar = 6.582119569e-16    # eV*s
+angstrom_to_m = 1e-10     # m per Å
+
+lambda1 = 0.45            # eV
+T = 800.0                 # K
+G = 0.005                 # dimensionless prefactor
+LAM_MIN = 1e-8            # avoid division by 0
+
 # parse dump file
 def parse_cg_dump(dump_file):
     with open(dump_file, "r") as f:
@@ -124,6 +144,20 @@ def compute_tphi(dihedrals, C=C):
     tphi_values = [t_phi_from_angle(a, C) for a in angles]
     return np.array(tphi_values)
 
+def reshape_tphi_into_chains(tphi,
+                              n_chains=20,
+                              beads_per_chain=10):
+
+    dihed_per_chain = beads_per_chain - 1
+
+    chains = []
+    for c in range(n_chains):
+        start = c * dihed_per_chain
+        end = start + dihed_per_chain
+        chains.append(list(tphi[start:end]))
+
+    return chains
+
 # onsite energy
 
 
@@ -166,6 +200,9 @@ def compute_w_nm(fn, fm, rvec):
     expo = np.exp(-alpha * (r - r0))
 
     return J_inter_eV * orient_factor * expo
+
+def minimum_image(rij_vec, box_lengths):
+    return rij_vec - np.rint(rij_vec / box_lengths) * box_lengths
 
 def add_through_space_to_H(H, coords, normals, box_lengths):
 
