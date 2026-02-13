@@ -5,7 +5,7 @@ import csv
 from typing import List, Tuple
 
 # parse dump file
-def parse_cg_dump(dump_file: str) -> List[Tuple[int, list]]:
+def parse_cg_dump(dump_file):
     with open(dump_file, "r") as f:
         lines = f.readlines()
 
@@ -13,13 +13,26 @@ def parse_cg_dump(dump_file: str) -> List[Tuple[int, list]]:
     current_frame = []
     current_timestep = None
     reading_atoms = False
+    box_lengths = None
 
     for i, line in enumerate(lines):
+
         if line.startswith("ITEM: TIMESTEP"):
             if current_frame:
-                frames.append((current_timestep, current_frame))
+                frames.append((current_timestep, box_lengths, current_frame))
                 current_frame = []
             current_timestep = int(lines[i + 1].strip())
+
+        elif line.startswith("ITEM: BOX BOUNDS"):
+            xlo, xhi = map(float, lines[i+1].split()[:2])
+            ylo, yhi = map(float, lines[i+2].split()[:2])
+            zlo, zhi = map(float, lines[i+3].split()[:2])
+
+            box_lengths = np.array([
+                xhi - xlo,
+                yhi - ylo,
+                zhi - zlo
+            ])
 
         elif line.startswith("ITEM: ATOMS"):
             reading_atoms = True
@@ -46,7 +59,7 @@ def parse_cg_dump(dump_file: str) -> List[Tuple[int, list]]:
             )
 
     if current_frame:
-        frames.append((current_timestep, current_frame))
+        frames.append((current_timestep, box_lengths, current_frame))
 
     return frames
 
@@ -111,14 +124,88 @@ def compute_tphi(dihedrals, C=C):
     tphi_values = [t_phi_from_angle(a, C) for a in angles]
     return np.array(tphi_values)
 
+# onsite energy
+
+
+# build hamiltonian
+def build_H_from_tphi(tphi_chains, epsilon=epsilon_default):
+
+    n_dihed = len(tphi_chains[0])
+    n_per_chain = n_dihed + 1
+    N_local = len(tphi_chains) * n_per_chain
+
+    H = np.zeros((N_local, N_local))
+    np.fill_diagonal(H, epsilon)
+
+    for c, chain_vals in enumerate(tphi_chains):
+        for m, t in enumerate(chain_vals):
+            i = c * n_per_chain + m
+            j = c * n_per_chain + m + 1
+            H[i, j] = t
+            H[j, i] = t
+
+    return H
+
+def normalize_vectors(v):
+    norms = np.linalg.norm(v, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    return v / norms
+
+
+def compute_w_nm(fn, fm, rvec):
+    r = np.linalg.norm(rvec)
+    if r == 0:
+        return 0
+
+    rhat = rvec / r
+    a = np.dot(fn, rhat)
+    b = np.dot(fm, rhat)
+    c = np.dot(fn, fm)
+
+    orient_factor = (a*a) * (b*b) * (c*c)
+    expo = np.exp(-alpha * (r - r0))
+
+    return J_inter_eV * orient_factor * expo
+
+def add_through_space_to_H(H, coords, normals, box_lengths):
+
+    normals = normalize_vectors(normals)
+    N_local = coords.shape[0]
+
+    pairs_added = 0
+
+    for i in range(N_local):
+        for j in range(i+1, N_local):
+
+            rij_vec = coords[j] - coords[i]
+            rij_vec = minimum_image(rij_vec, box_lengths)
+
+            r = np.linalg.norm(rij_vec)
+            if r > through_space_cutoff:
+                continue
+
+            # skip intrachain
+            if i // n_monomers_per_chain == j // n_monomers_per_chain:
+                continue
+
+            w = compute_w_nm(normals[i], normals[j], rij_vec)
+
+            if abs(w) > 1e-12:
+                H[i, j] += w
+                H[j, i] += w
+                pairs_added += 1
+
+    return H, pairs_added
+
+
 # main
 dump_file = "cg_beads.dump"
 
 frames = parse_cg_dump(dump_file)
 
-print("Frames:", len(frames))
+print("Total frames:", len(frames))
 
-for timestep, frame in frames:
+for timestep, box_lengths, frame in frames:
 
     print("\nProcessing timestep:", timestep)
 
@@ -128,13 +215,11 @@ for timestep, frame in frames:
 
     tphi = compute_tphi(dihedrals)
 
-    print("coords shape:", coords.shape)
-    print("tphi length:", len(tphi))
+    tphi_chains = reshape_tphi_into_chains(tphi)
 
+    H = build_H_from_tphi(tphi_chains)
 
+    H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
 
-
-
-
-
-
+    print("Hamiltonian size:", H.shape)
+    print("Through-space pairs added:", pairs_added)
