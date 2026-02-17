@@ -237,25 +237,16 @@ def add_through_space_to_H(H, coords, normals, box_lengths):
 
 # main
 dump_file = "cg_beads.dump"
-
 frames = parse_cg_dump(dump_file)
-
 print("Total frames:", len(frames))
 
 for timestep, box_lengths, frame in frames:
-
     print("\nProcessing timestep:", timestep)
-
     coords, normals = extract_coords_normals(frame)
-
     dihedrals = compute_dihedrals_for_frame(frame)
-
     tphi = compute_tphi(dihedrals)
-
     tphi_chains = reshape_tphi_into_chains(tphi)
-
     H = build_H_from_tphi(tphi_chains)
-
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
 
     print("Hamiltonian size:", H.shape)
