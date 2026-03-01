@@ -3,6 +3,7 @@
 import numpy as np
 import csv
 from typing import List, Tuple
+import os
 
 n_chains = 20
 n_monomers_per_chain = 10
@@ -20,10 +21,18 @@ hbar = 6.582119569e-16    # eV*s
 angstrom_to_m = 1e-10     # m per Å
 
 lambda1 = 0.45            # eV
-T = 800.0                 # K
+T = 300.0                 # K
 G = 0.005                 # dimensionless prefactor
 LAM_MIN = 1e-8            # avoid division by 0
 
+Ndop = 1
+F_mag = 20000.0
+
+# load static on-site energy
+onsite = np.loadtxt("onsite_eV_shifted.txt")
+if len(onsite) != N_sites:
+    raise ValueError("Onsite file size does not match number of monomers")
+    
 # parse dump file
 def parse_cg_dump(dump_file):
     with open(dump_file, "r") as f:
@@ -234,20 +243,109 @@ def add_through_space_to_H(H, coords, normals, box_lengths):
 
     return H, pairs_added
 
+def build_kij(H, coords, box_lengths, F_vec):
+    N = H.shape[0]
+    eigvals, eigvecs = np.linalg.eigh(H)
+    c2 = np.abs(eigvecs)**2
+    c4 = np.abs(eigvecs)**4
+    sum_c4 = np.sum(c4, axis=0)
+    lam = lambda1*(sum_c4.reshape((N,1))+sum_c4.reshape((1,N)))
+    np.fill_diagonal(lam,0)
+    lam = np.maximum(lam,LAM_MIN)
+    H_off = H.copy()
+    np.fill_diagonal(H_off,0)
+    V2 = H_off**2
+    temp = np.tensordot(c2, V2, axes=(0,0))
+    V2_mo = G**2 * (temp @ c2)
+    V2_mo = 0.5*(V2_mo+V2_mo.T)
+    F_hat = F_vec/np.linalg.norm(F_vec)
+    F_eV_A = np.linalg.norm(F_vec)*1e-10
+    pref = 2*np.pi/hbar
+    kij = np.zeros((N,N))
 
+    for a in range(N):
+        for b in range(N):
+            if a==b: continue
+            if V2_mo[a,b]<=0: continue
+
+            rij = coords[b]-coords[a]
+            rij -= np.rint(rij/box_lengths)*box_lengths
+            deltaG = (eigvals[b]-eigvals[a]) + F_eV_A*np.dot(rij,F_hat)
+
+            expo = -((deltaG+lam[a,b])**2)/(4*lam[a,b]*kB*T)
+            rate_pref = pref*V2_mo[a,b]/np.sqrt(4*np.pi*lam[a,b]*kB*T)
+            kij[a,b] = rate_pref*np.exp(expo)
+
+    return kij, eigvals, eigvecs, F_hat
+    
+def solve_hole_populations(kij, Ndop=1, tol=1e-8, max_iter=100000):
+    kij = np.array(kij)
+    np.fill_diagonal(kij,0)
+    N = kij.shape[0]
+    P = np.full(N, Ndop/N)
+    KT = kij.T
+
+    for _ in range(max_iter):
+        P_old = P.copy()
+        for i in range(N):
+            R_i = kij[i].sum()
+            if R_i<=0: continue
+            num_i = np.dot(KT[i],P)
+            P[i] = num_i/R_i
+        P *= Ndop/P.sum()
+        if np.max(np.abs(P-P_old))<tol:
+            break
+
+    return P
+
+def compute_mobility_tensor(kij, coords, box_lengths, P, F_vec):
+    F_hat = F_vec/np.linalg.norm(F_vec)
+    J = np.zeros(3)
+
+    N=len(P)
+
+    for i in range(N):
+        for j in range(N):
+            if i==j: continue
+            rij = coords[j]-coords[i]
+            rij -= np.rint(rij/box_lengths)*box_lengths
+            J += kij[i,j]*P[i]*(1-P[j])*(rij*angstrom_to_m)
+
+    mu_col = J/np.linalg.norm(F_vec)
+    return mu_col
 # main
 dump_file = "cg_beads.dump"
 frames = parse_cg_dump(dump_file)
+results = []
 print("Total frames:", len(frames))
 
 for timestep, box_lengths, frame in frames:
     print("\nProcessing timestep:", timestep)
+    frame_sorted=sorted(frame,key=lambda x:x[0])
     coords, normals = extract_coords_normals(frame)
     dihedrals = compute_dihedrals_for_frame(frame)
     tphi = compute_tphi(dihedrals)
     tphi_chains = reshape_tphi_into_chains(tphi)
+    
+    # load on-site energy
+    ????????????????????????
+    
     H = build_H_from_tphi(tphi_chains)
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
+    # kij
+    F_vec=np.array([F_mag,0,0])
+    kij=build_kij(H,coords,box_lengths,F_vec)
+    # Pi
+    P=solve_pop(kij)
+    # mobility
+    for F_vec in fields:
+        kij, eigvals, eigvecs, F_hat = build_kij(H,coords,box_lengths,F_vec)
+        P = solve_hole_populations(kij,Ndop=Ndop)
+        mu_col = compute_mobility_tensor(kij,coords,box_lengths,P,F_vec)
+        mu_cols.append(mu_col)
 
-    print("Hamiltonian size:", H.shape)
-    print("Through-space pairs added:", pairs_added)
+    mu_full = np.column_stack(mu_cols)*1e4
+    mu_eff = np.trace(mu_full)/3
+
+    print("Timestep:",timestep)
+    print("μ_eff:",mu_eff)
