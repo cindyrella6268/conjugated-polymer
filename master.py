@@ -168,7 +168,17 @@ def reshape_tphi_into_chains(tphi,
     return chains
 
 # onsite energy
-
+def load_onsite_energies(path):
+    energies = np.zeros(N, dtype=float)
+    with open(path, "r") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split() 
+            mon_id = int(parts[0])
+            e_val = float(parts[1]) 
+            energies[mon_id - 1] = e_val
+    return energies
 
 # build hamiltonian
 def build_H_from_tphi(tphi_chains, epsilon=epsilon_default):
@@ -328,7 +338,8 @@ for timestep, box_lengths, frame in frames:
     tphi_chains = reshape_tphi_into_chains(tphi)
     
     # load on-site energy
-    ????????????????????????
+    onsite_energies = load_onsite_energies("onsite_eV_shifted.txt")
+    np.fill_diagonal(H, onsite_energies)
     
     H = build_H_from_tphi(tphi_chains)
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
