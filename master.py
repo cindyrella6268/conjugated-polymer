@@ -7,6 +7,7 @@ import os
 
 n_chains = 20
 n_monomers_per_chain = 10
+N = n_chains * n_monomers_per_chain
 
 epsilon_default = 0.0
 
@@ -313,7 +314,7 @@ def compute_mobility_tensor(kij, coords, box_lengths, P, F_vec):
         for j in range(N):
             if i==j: continue
             rij = coords[j]-coords[i]
-            rij -= np.rint(rij/box_lengths)*box_lengths
+            rij = minimum_image(rij, box_lengths)
             J += kij[i,j]*P[i]*(1-P[j])*(rij*angstrom_to_m)
 
     mu_col = J/np.linalg.norm(F_vec)
@@ -324,11 +325,14 @@ frames = parse_cg_dump(dump_file)
 results = []
 print("Total frames:", len(frames))
 
+fields = [np.array([F_mag,0,0]), np.array([0,F_mag,0]), np.array([0,0,F_mag])]
+mu_cols = []
+
 for timestep, box_lengths, frame in frames:
     print("\nProcessing timestep:", timestep)
     frame_sorted = sorted(frame,key=lambda x:x[0])
     coords, normals = extract_coords_normals(frame_sorted)
-    dihedrals = compute_dihedrals_for_frame(frame)
+    dihedrals = compute_dihedrals_for_frame(frame_sorted)
     tphi = compute_tphi(dihedrals)
     tphi_chains = reshape_tphi_into_chains(tphi)
     
@@ -337,11 +341,7 @@ for timestep, box_lengths, frame in frames:
     # load on-site energy
     onsite_energies = load_onsite_energies("onsite_eV_shifted.txt")
     np.fill_diagonal(H, onsite_energies)
-    # kij
-    F_vec = np.array([F_mag,0,0])
-    kij, eigvals, eigvecs, F_hat = build_kij(H,coords,box_lengths,F_vec)
-    # Pi
-    P = solve_hole_populations(kij)
+    
     # mobility
     for F_vec in fields:
         kij, eigvals, eigvecs, F_hat = build_kij(H,coords,box_lengths,F_vec)
