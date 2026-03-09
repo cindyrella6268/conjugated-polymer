@@ -274,8 +274,7 @@ def build_kij(H, coords, box_lengths, F_vec):
             if a==b: continue
             if V2_mo[a,b]<=0: continue
 
-            rij = coords[b]-coords[a]
-            rij -= np.rint(rij/box_lengths)*box_lengths
+            rij = minimum_image(coords[b]-coords[a], box_lengths)
             deltaG = (eigvals[b]-eigvals[a]) + F_eV_A*np.dot(rij,F_hat)
 
             expo = -((deltaG+lam[a,b])**2)/(4*lam[a,b]*kB*T)
@@ -319,6 +318,7 @@ def compute_mobility_tensor(kij, coords, box_lengths, P, F_vec):
 
     mu_col = J/np.linalg.norm(F_vec)
     return mu_col
+
 # main
 dump_file = "cg_beads.dump"
 frames = parse_cg_dump(dump_file)
@@ -326,9 +326,9 @@ results = []
 print("Total frames:", len(frames))
 
 fields = [np.array([F_mag,0,0]), np.array([0,F_mag,0]), np.array([0,0,F_mag])]
-mu_cols = []
 
 for timestep, box_lengths, frame in frames:
+    mu_cols = []
     print("\nProcessing timestep:", timestep)
     frame_sorted = sorted(frame,key=lambda x:x[0])
     coords, normals = extract_coords_normals(frame_sorted)
@@ -340,6 +340,7 @@ for timestep, box_lengths, frame in frames:
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
     # load on-site energy
     onsite_energies = load_onsite_energies("onsite_eV_shifted.txt")
+    assert len(onsite_energies) == H.shape[0]
     np.fill_diagonal(H, onsite_energies)
     
     # mobility
