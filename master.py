@@ -4,6 +4,7 @@ import numpy as np
 import csv
 from typing import List, Tuple
 import os
+import matplotlib.pyplot as plt
 
 n_chains = 20
 n_monomers_per_chain = 10
@@ -327,6 +328,9 @@ print("Total frames:", len(frames))
 
 fields = [np.array([F_mag,0,0]), np.array([0,F_mag,0]), np.array([0,0,F_mag])]
 
+eff_mobility = []
+time_frame = []
+
 for timestep, box_lengths, frame in frames:
     mu_cols = []
     print("\nProcessing timestep:", timestep)
@@ -355,3 +359,29 @@ for timestep, box_lengths, frame in frames:
 
     print("Timestep:",timestep)
     print("μ_eff:",mu_eff)
+
+    eff_mobility.append(mu_eff)
+    time_frame.append(timestep)
+
+eff_mobility = np.array(eff_mobility)
+time_frame = np.array(time_frame)
+time_ns = time_frame * 0.1    # convert frames to ns
+colors = eff_mobility
+size = 50
+plt.figure(figsize=(6,4))
+plt.scatter(time_ns, eff_mobility, c=colors, s=size, alpha=0.7, cmap='viridis')
+# statistics
+mean_val = np.mean(eff_mobility)
+std_val = np.std(eff_mobility)
+sem = std_val / np.sqrt(len(eff_mobility))
+plt.axhline(0.0101, linestyle='--', color='r', label='experiment = 0.0101')
+plt.axhline(mean_val, linestyle='-', color='blue', label='Average')
+plt.errorbar(time_ns, eff_mobility, yerr=sem, fmt='none', capsize=3)
+plt.xlabel('Time (ns)')
+plt.ylabel('Mobility (cm$^2$/V·s)')
+plt.legend()
+plt.colorbar(label='Mobility value')
+plt.tight_layout()
+plt.savefig("mobility_vs_time.png", dpi=300)
+plt.close()
+
