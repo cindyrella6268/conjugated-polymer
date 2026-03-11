@@ -365,7 +365,12 @@ for timestep, box_lengths, frame in frames:
 
 eff_mobility = np.array(eff_mobility)
 time_frame = np.array(time_frame)
-time_ns = time_frame * 0.1    # convert frames to ns
+# keep only positive mobilities for plotting
+positive_mask = eff_mobility > 0
+eff_mobility = eff_mobility[positive_mask]
+time_frame = time_frame[positive_mask]
+# convert frames to ns
+time_ns = time_frame * 0.1
 colors = eff_mobility
 size = 50
 plt.figure(figsize=(6,4))
