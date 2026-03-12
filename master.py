@@ -5,6 +5,7 @@ import csv
 from typing import List, Tuple
 import os
 import matplotlib.pyplot as plt
+import time
 
 n_chains = 20
 n_monomers_per_chain = 10
@@ -88,6 +89,52 @@ def parse_cg_dump(dump_file):
         frames.append((current_timestep, box_lengths, current_frame))
 
     return frames
+
+# write a data file for each frame
+def write_frame_as_data(frame, template_data, outfile):
+
+    with open(template_data, "r") as f:
+        lines = f.readlines()
+
+    coords = {atom_id: coord for (atom_id, _, coord, _, _, _, _) in frame}
+
+    new_lines = []
+    in_atoms = False
+
+    for line in lines:
+
+        if line.startswith("Atoms"):
+            in_atoms = True
+            new_lines.append(line)
+            continue
+
+        if in_atoms and line.strip() == "":
+            new_lines.append(line)
+            continue
+
+        if in_atoms:
+
+            parts = line.split()
+
+            if len(parts) < 7:
+                new_lines.append(line)
+                continue
+
+            atom_id = int(parts[0])
+
+            if atom_id in coords:
+                x, y, z = coords[atom_id]
+
+                parts[4] = f"{x}"
+                parts[5] = f"{y}"
+                parts[6] = f"{z}"
+
+                line = " ".join(parts) + "\n"
+
+        new_lines.append(line)
+
+    with open(outfile, "w") as f:
+        f.writelines(new_lines)
 
 # get coords and normals
 def extract_coords_normals(frame):
@@ -176,7 +223,21 @@ def load_onsite_energies(path):
             e_val = float(parts[1]) 
             energies[mon_id - 1] = e_val
     return energies
+    
+def combine_onsite_results(n_monomers):
 
+    energies = np.zeros(n_monomers)
+
+    for i in range(1, n_monomers + 1):
+
+        fname = f"result_{i}.txt"
+
+        with open(fname) as f:
+            parts = f.read().split()
+            energies[i-1] = float(parts[1])
+
+    return energies
+    
 # build hamiltonian
 def build_H_from_tphi(tphi_chains, epsilon=epsilon_default):
 
@@ -339,14 +400,22 @@ for timestep, box_lengths, frame in frames:
     dihedrals = compute_dihedrals_for_frame(frame_sorted)
     tphi = compute_tphi(dihedrals)
     tphi_chains = reshape_tphi_into_chains(tphi)
-    
+
+    data_file = f"frame_{timestep}.data"
+    write_frame_as_data(frame_sorted, "eq3_last_equil.data", data_file)
+    os.system(f"python on_site_energy.py {data_file}")
+    os.system("sbatch submit_run_all.sh")
+    while True:
+        files = [f for f in os.listdir() if f.startswith("result_")]
+        if len(files) == N:
+            break
+        time.sleep(5)
+    onsite_energies = combine_onsite_results(N)
     H = build_H_from_tphi(tphi_chains)
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
-    # load on-site energy
-    onsite_energies = load_onsite_energies("onsite_eV_shifted.txt")
-    assert len(onsite_energies) == H.shape[0]
     np.fill_diagonal(H, onsite_energies)
-    
+    os.system("rm result_*.txt")
+
     # mobility
     for F_vec in fields:
         kij, eigvals, eigvecs, F_hat = build_kij(H,coords,box_lengths,F_vec)
