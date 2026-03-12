@@ -92,7 +92,6 @@ def parse_cg_dump(dump_file):
 
 # write a data file for each frame
 def write_frame_as_data(frame, template_data, outfile):
-
     with open(template_data, "r") as f:
         lines = f.readlines()
 
@@ -102,37 +101,26 @@ def write_frame_as_data(frame, template_data, outfile):
     in_atoms = False
 
     for line in lines:
-
         if line.startswith("Atoms"):
             in_atoms = True
             new_lines.append(line)
             continue
-
         if in_atoms and line.strip() == "":
             new_lines.append(line)
             continue
-
         if in_atoms:
-
             parts = line.split()
-
             if len(parts) < 7:
                 new_lines.append(line)
                 continue
-
             atom_id = int(parts[0])
-
             if atom_id in coords:
                 x, y, z = coords[atom_id]
-
                 parts[4] = f"{x}"
                 parts[5] = f"{y}"
                 parts[6] = f"{z}"
-
                 line = " ".join(parts) + "\n"
-
         new_lines.append(line)
-
     with open(outfile, "w") as f:
         f.writelines(new_lines)
 
