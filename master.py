@@ -12,6 +12,7 @@ import time
 n_chains = 20
 n_monomers_per_chain = 10
 n_monomers = n_chains * n_monomers_per_chain
+N = n_monomers
 
 epsilon_default = 0.0
 
