@@ -1,6 +1,7 @@
 # master code to compute mobility for many time steps with coarse-grained dump file
 # need on_site_energy.py in the same directory to generate input files for onsite energy calculation
 # need on_site_energy.input in the same directory as an input file format
+# need submit_run_all.sh
 import numpy as np
 import csv
 from typing import List, Tuple
