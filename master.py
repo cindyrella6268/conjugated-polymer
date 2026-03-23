@@ -398,7 +398,7 @@ for timestep, box_lengths, frame in frames:
             break
         time.sleep(2)
         
-    onsite_energies = combine_onsite_results(N)
+    onsite_energies = combine_onsite_results(n_monomers)
     H = build_H_from_tphi(tphi_chains)
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
     np.fill_diagonal(H, onsite_energies)
