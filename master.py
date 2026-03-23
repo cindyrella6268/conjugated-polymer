@@ -1,5 +1,6 @@
 # master code to compute mobility for many time steps with coarse-grained dump file
-
+# need on_site_energy.py in the same directory to generate input files for onsite energy calculation
+# need on_site_energy.input in the same directory as an input file format
 import numpy as np
 import csv
 from typing import List, Tuple
@@ -146,11 +147,7 @@ def align_normals_consistently(normals):
     return aligned
 
 # compute dihedrals
-def compute_dihedrals_for_frame(
-    frame,
-    n_chains=20,
-    beads_per_chain=10
-):
+def compute_dihedrals_for_frame(frame, n_chains=n_chains, beads_per_chain=n_monomers_per_chain):
     chains = [[] for _ in range(n_chains)]
 
     for idx, (_, _, _, normal, _, _, _) in enumerate(frame):
@@ -185,12 +182,8 @@ def compute_tphi(dihedrals, C=C):
     tphi_values = [t_phi_from_angle(a, C) for a in angles]
     return np.array(tphi_values)
 
-def reshape_tphi_into_chains(tphi,
-                              n_chains=20,
-                              beads_per_chain=10):
-
+def reshape_tphi_into_chains(tphi, n_chains=20, beads_per_chain=10):
     dihed_per_chain = beads_per_chain - 1
-
     chains = []
     for c in range(n_chains):
         start = c * dihed_per_chain
@@ -213,36 +206,27 @@ def load_onsite_energies(path):
     return energies
     
 def combine_onsite_results(n_monomers):
-
     energies = np.zeros(n_monomers)
-
     for i in range(1, n_monomers + 1):
-
         fname = f"result_{i}.txt"
-
         with open(fname) as f:
             parts = f.read().split()
             energies[i-1] = float(parts[1])
-
     return energies
     
 # build hamiltonian
 def build_H_from_tphi(tphi_chains, epsilon=epsilon_default):
-
     n_dihed = len(tphi_chains[0])
     n_per_chain = n_dihed + 1
     N_local = len(tphi_chains) * n_per_chain
-
     H = np.zeros((N_local, N_local))
     np.fill_diagonal(H, epsilon)
-
     for c, chain_vals in enumerate(tphi_chains):
         for m, t in enumerate(chain_vals):
             i = c * n_per_chain + m
             j = c * n_per_chain + m + 1
             H[i, j] = t
             H[j, i] = t
-
     return H
 
 def normalize_vectors(v):
@@ -250,12 +234,10 @@ def normalize_vectors(v):
     norms[norms == 0] = 1
     return v / norms
 
-
 def compute_w_nm(fn, fm, rvec):
     r = np.linalg.norm(rvec)
     if r == 0:
         return 0
-
     rhat = rvec / r
     a = np.dot(fn, rhat)
     b = np.dot(fm, rhat)
@@ -391,13 +373,31 @@ for timestep, box_lengths, frame in frames:
 
     data_file = f"frame_{timestep}.data"
     write_frame_as_data(frame_sorted, "eq3_last_equil.data", data_file)
+    os.system("rm -f result_*.txt onsite_mono_*.in")
     os.system(f"python on_site_energy.py {data_file}")
-    os.system("sbatch submit_run_all.sh")
+    with open("n_monomers.txt") as f:               # read number of monomers
+        n_monomers = int(f.read().strip())
+    # submit SLURM array job
+    cmd = f"sbatch --array=1-{n_monomers} submit_run_all.sh"
+    result = os.popen(cmd).read()
+    job_id = result.strip().split()[-1]
+    print("Submitted job:", job_id)
+    # wait for job to finish
+    def wait_for_job(job_id):
+        while True:
+            check = os.popen(f"squeue -j {job_id}").read()
+            if job_id not in check:
+                break
+            time.sleep(5)
+
+    wait_for_job(job_id)
+    # wait for result files
     while True:
         files = [f for f in os.listdir() if f.startswith("result_")]
-        if len(files) == N:
+        if len(files) == n_monomers:
             break
-        time.sleep(5)
+        time.sleep(2)
+        
     onsite_energies = combine_onsite_results(N)
     H = build_H_from_tphi(tphi_chains)
     H, pairs_added = add_through_space_to_H(H, coords, normals, box_lengths)
