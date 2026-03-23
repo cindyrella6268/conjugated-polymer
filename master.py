@@ -11,7 +11,9 @@ import time
 
 n_chains = 20
 n_monomers_per_chain = 10
-N = n_chains * n_monomers_per_chain
+n_monomers = n_chains * n_monomers_per_chain
+print(f"N (from monomers) = {N}")
+print(f"coords shape = {coords.shape}")
 
 epsilon_default = 0.0
 
