@@ -185,7 +185,7 @@ def compute_tphi(dihedrals, C=C):
     tphi_values = [t_phi_from_angle(a, C) for a in angles]
     return np.array(tphi_values)
 
-def reshape_tphi_into_chains(tphi, n_chains=20, beads_per_chain=10):
+def reshape_tphi_into_chains(tphi, n_chains=n_chains, beads_per_chain=n_monomers_per_chain):
     dihed_per_chain = beads_per_chain - 1
     chains = []
     for c in range(n_chains):
