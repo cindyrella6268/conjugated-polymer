@@ -299,7 +299,7 @@ def build_kij(H, coords, box_lengths, F_vec):
     V2_mo = G**2 * (temp @ c2)
     V2_mo = 0.5*(V2_mo+V2_mo.T)
     F_hat = F_vec/np.linalg.norm(F_vec)
-    F_eV_A = np.linalg.norm(F_vec)*1e-10
+    F_eV_A = np.linalg.norm(F_vec)*1e-8
     pref = 2*np.pi/hbar
     kij = np.zeros((N,N))
 
