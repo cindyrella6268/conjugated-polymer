@@ -253,6 +253,12 @@ def compute_w_nm(fn, fm, rvec):
 def minimum_image(rij_vec, box_lengths):
     return rij_vec - np.rint(rij_vec / box_lengths) * box_lengths
 
+def minimum_image_triclinic(rij_vec, h, h_inv):
+    rij_vec = np.array(rij_vec).flatten()
+    s = h_inv @ rij_vec
+    s -= np.rint(s)
+    return (h @ s).flatten()
+    
 def add_through_space_to_H(H, coords, normals, box_lengths):
 
     normals = normalize_vectors(normals)
