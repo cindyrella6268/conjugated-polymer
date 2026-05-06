@@ -87,7 +87,7 @@ def build_kij_from_H(H, coords, F_vec):
 
             rij = R_mo[b] - R_mo[a]
             #if use_min_image: 
-                #rij = apply_minimum_image_A(rij, box_lengths)
+                rij = apply_minimum_image_A(rij, box_lengths)
             Rij_proj = np.dot(rij, F_hat)
             deltaG = (E_b - E_a) + (F_eV_per_A * Rij_proj)
 
