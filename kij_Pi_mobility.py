@@ -28,7 +28,7 @@ def apply_minimum_image_A(vec, box_lengths_A):
     return vec - box_lengths_A * np.round(vec / box_lengths_A)
 
 # input files
-def load_inputs(H_file="H_onsite_11252025.txt", coords_file="coords.txt", p0_file="P0.txt"):
+def load_inputs(H_file="H_t2_new_onsite.txt", coords_file="coords_t2.txt", p0_file="P0_fermi_dirac.txt"):
     H = np.loadtxt(H_file)
     coords = np.loadtxt(coords_file)
     P0 = np.loadtxt(p0_file) if os.path.exists(p0_file) else None
@@ -139,7 +139,7 @@ def solve_hole_populations(kij, P0=None, Ndop=None, tol=1e-8, max_iter=100000, d
     return P
 
 # mobility
-def compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop, network_ID=None):
+def compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop):
     box_lengths_A = box_lengths #kepp box length in A
 
     J_vec = np.zeros(3, dtype=float)
@@ -151,10 +151,11 @@ def compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop, network_ID=None):
                 continue
 
             #skip hopping across networks
-            if network_ID is not None and network_ID[i] != network_ID[j]:
-                continue
+            #if network_ID is not None and network_ID[i] != network_ID[j]:
+             #   continue
 
             k_ij = kij[i, j]
+            k_ji = kij[j, i]
             if k_ij <= 0.0:
                 continue
 
@@ -171,10 +172,10 @@ def compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop, network_ID=None):
     mu_tensor = np.outer(J_vec, F_hat) / (F_mag * Ndop)
     return mu_along_field, mu_tensor, J_vec
 
-def run_single_field(H, coords, P0, network_ID, Ndop, F_vec, verbose=False):
+def run_single_field(H, coords, P0, Ndop, F_vec, verbose=False):
     kij, eigvals, eigvecs, R_mo, F_hat, F_mag = build_kij_from_H(H, coords, F_vec)
     P = solve_hole_populations(kij, P0=P0, Ndop=Ndop, verbose=verbose)
-    mu_along, mu_tensor, J_vec = compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop, network_ID=network_ID)
+    mu_along, mu_tensor, J_vec = compute_mobility(kij, R_mo, P, F_hat, F_mag, Ndop)
     return {
         "kij": kij,
         "P": P,
@@ -186,25 +187,36 @@ def run_single_field(H, coords, P0, network_ID, Ndop, F_vec, verbose=False):
         "R_mo": R_mo
     }
 
-def compute_full_mobility_tensor(H, coords, P0=None, Ndop=1, network_ID=None, F_mag=20000.0, verbose=False):
-    # three orthogonal fields (use same magnitude)
+def compute_full_mobility_tensor(H, coords, P0=None, Ndop=1,
+                                 F_mag=20000.0, verbose=False):
+
     fields = [
         np.array([F_mag, 0.0, 0.0]),
         np.array([0.0, F_mag, 0.0]),
         np.array([0.0, 0.0, F_mag])
     ]
-    cols = []
+
+    mu_cols = []
     J_vectors = []
     results = []
-    for F in fields:
-        res = run_single_field(H, coords, P0, network_ID, Ndop, F, verbose=verbose)
-        results.append(res)
-        idx = int(np.argmax(np.abs(F)))  # 0,1,2
-        col = res["mu_tensor"][:, idx]   # column vector
-        cols.append(col)
-        J_vectors.append(res["J_vec"])
 
-    mu_full = np.column_stack(cols)  # assemble columns to get the full 3x3 mobility tensor
+    for i, F in enumerate(fields):
+        res = run_single_field(H, coords, P0, Ndop, F, verbose=verbose)
+        J = res["J_vec"]              # FULL current vector
+        mu_col = J / F_mag            # this is column i of μ
+
+        mu_cols.append(mu_col)
+        J_vectors.append(J)
+        results.append(res)
+
+        if verbose:
+            print(f"Field along {['x','y','z'][i]}:")
+            print("  F =", F)
+            print("  J =", J)
+            print("  μ_col =", mu_col)
+
+    mu_full = np.column_stack(mu_cols)
+
     return {
         "mu_full": mu_full,
         "results": results,
@@ -212,13 +224,31 @@ def compute_full_mobility_tensor(H, coords, P0=None, Ndop=1, network_ID=None, F_
     }
 
 # main
-def main(verbose=False, F_mag=20000.0, Ndop=10):
+def main(verbose=False, F_mag=20000.0, Ndop=1):
     H, coords, P0 = load_inputs()
-    network_ID = np.loadtxt("network_ID.txt", dtype=int)
-    out = compute_full_mobility_tensor(H, coords, P0=P0, Ndop=Ndop, network_ID=network_ID, F_mag=F_mag, verbose=verbose)
+    #network_ID = np.loadtxt("network_ID.txt", dtype=int)
+    out = compute_full_mobility_tensor(H, coords, P0=P0, Ndop=Ndop, F_mag=F_mag, verbose=verbose)
     mu_full = out["mu_full"]
-    print("\nfull mobility tensor [m^2 / V s]:\n", mu_full)
+    mu_full_cm = mu_full * 1.0e4
+    print("\nfull mobility tensor [cm^2 / V s]:\n", mu_full_cm)
+
+    #diagonalize
+    eigvals, eigvecs = np.linalg.eig(mu_full_cm)
+    #sort by descending mobility
+    idx = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[idx]
+    eigvecs = eigvecs[:, idx]
+
+    mu_eff = np.trace(mu_full_cm) / 3
+
+    print("\nPrincipal mobilities [cm^2/Vs]:")
+    for i, val in enumerate(eigvals):
+        print(f" μ_{i+1} = {val:.4e}")
+    print("\nPrincipal directions (eigvecs):")
+    print(eigvecs)
+
+    print(f"\nEffective mobility: {mu_eff:.4e} cm2/Vs")
+
 
 if __name__ == "__main__":
     main()
-
