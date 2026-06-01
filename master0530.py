@@ -403,7 +403,7 @@ def main():
         normals = np.column_stack([atoms.arrays['d_nx'],
                                    atoms.arrays['d_ny'],
                                    atoms.arrays['d_nz']])  # (N, 3)
-        mol_ids = atoms.arrays['type']                   # (N,) 1-based mol-id
+        mol_ids = atoms.arrays['d_mol'].astype(int)                  # (N,) 1-based mol-id
         N       = len(coords)
 
         # Onsite energies (0-based index; missing → 0 eV)
