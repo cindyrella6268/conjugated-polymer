@@ -44,7 +44,7 @@ _FIELD_LABELS = ["x", "y", "z"]
 def _remap_dump_columns(raw_text: str) -> str:
     return re.sub(
         r'(?m)^(ITEM: ATOMS\s+id\s+)mol(\s+type\s+x\s+y\s+z\s+)nx(\s+)ny(\s+)nz',
-        r'\1type\2d_nx\3d_ny\4d_nz',
+        r'\1d_mol\2d_nx\3d_ny\4d_nz',
         raw_text
     )
 
