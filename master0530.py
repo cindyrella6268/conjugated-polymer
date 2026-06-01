@@ -42,20 +42,10 @@ _FIELD_LABELS = ["x", "y", "z"]
 
 # ASE-based LAMMPS dump reader
 def _remap_dump_columns(raw_text: str) -> str:
-    """
-    Rename dump columns in-memory so ASE can ingest them:
-
-      mol  → type    ASE stores integer 'type' arrays in atoms.arrays['type']
-      nx   → d_nx    ASE stores 'd_*' float columns in atoms.arrays automatically
-      ny   → d_ny
-      nz   → d_nz
-
-    The dump file on disk is never touched.
-    """
     return re.sub(
-        r'(?m)^(ITEM: ATOMS\s+id\s+)mol(\s+x\s+y\s+z\s+)nx(\s+)ny(\s+)nz',
+        r'(?m)^(ITEM: ATOMS\s+id\s+)mol(\s+type\s+x\s+y\s+z\s+)nx(\s+)ny(\s+)nz',
         r'\1type\2d_nx\3d_ny\4d_nz',
-        raw_text,
+        raw_text
     )
 
 
